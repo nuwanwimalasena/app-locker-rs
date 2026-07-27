@@ -10,7 +10,7 @@ use crate::vault;
 pub fn run_gui() -> Result<()> {
     let options = eframe::NativeOptions {
         viewport: egui::ViewportBuilder::default()
-            .with_inner_size([520.0, 580.0])
+            .with_inner_size([540.0, 600.0])
             .with_title("App Locker"),
         ..Default::default()
     };
@@ -27,6 +27,7 @@ pub fn run_gui() -> Result<()> {
 struct AppLockerGui {
     passphrase_input: String,
     selected_app: Option<String>,
+    confirm_remove_app: Option<String>,
     status_msg: String,
 
     // New Vault Modal State
@@ -91,7 +92,7 @@ impl eframe::App for AppLockerGui {
                 ui.label("No vaults created yet. Click '➕ New Vault' to get started.");
             } else {
                 egui::ScrollArea::vertical()
-                    .max_height(280.0)
+                    .max_height(260.0)
                     .show(ui, |ui| {
                         for (app_name, is_mounted) in vaults {
                             ui.group(|ui| {
@@ -107,6 +108,29 @@ impl eframe::App for AppLockerGui {
                                     ui.with_layout(
                                         egui::Layout::right_to_left(egui::Align::Center),
                                         |ui| {
+                                            if ui.button("🗑️ Remove").clicked() {
+                                                self.confirm_remove_app = Some(app_name.clone());
+                                            }
+
+                                            if ui.button("📌 Shortcut").clicked() {
+                                                match shortcut::create_desktop_shortcut(
+                                                    &app_name, None,
+                                                ) {
+                                                    Ok(p) => {
+                                                        self.status_msg = format!(
+                                                            "Desktop launcher created: {}",
+                                                            p.display()
+                                                        )
+                                                    }
+                                                    Err(e) => {
+                                                        self.status_msg = format!(
+                                                            "Error creating shortcut: {}",
+                                                            e
+                                                        )
+                                                    }
+                                                }
+                                            }
+
                                             if is_mounted {
                                                 if ui.button("Lock").clicked() {
                                                     let mount_path =
@@ -130,25 +154,6 @@ impl eframe::App for AppLockerGui {
                                                 self.selected_app = Some(app_name.clone());
                                                 self.passphrase_input.clear();
                                             }
-
-                                            if ui.button("📌 Shortcut").clicked() {
-                                                match shortcut::create_desktop_shortcut(
-                                                    &app_name, None,
-                                                ) {
-                                                    Ok(p) => {
-                                                        self.status_msg = format!(
-                                                            "Desktop launcher created: {}",
-                                                            p.display()
-                                                        )
-                                                    }
-                                                    Err(e) => {
-                                                        self.status_msg = format!(
-                                                            "Error creating shortcut: {}",
-                                                            e
-                                                        )
-                                                    }
-                                                }
-                                            }
                                         },
                                     );
                                 });
@@ -156,6 +161,34 @@ impl eframe::App for AppLockerGui {
                             ui.add_space(4.0);
                         }
                     });
+            }
+
+            // Inline Delete Confirmation Section
+            if let Some(ref app) = self.confirm_remove_app.clone() {
+                ui.add_space(8.0);
+                ui.separator();
+                ui.colored_label(
+                    egui::Color32::LIGHT_RED,
+                    format!(
+                        "⚠️ Permanently delete vault & encrypted data for '{}'?",
+                        app
+                    ),
+                );
+                ui.horizontal(|ui| {
+                    if ui.button("Yes, Delete Vault").clicked() {
+                        match vault::remove_vault(&config, app) {
+                            Ok(_) => {
+                                self.status_msg = format!("Vault '{}' permanently deleted.", app)
+                            }
+                            Err(e) => self.status_msg = format!("Error deleting vault: {}", e),
+                        }
+                        self.confirm_remove_app = None;
+                    }
+
+                    if ui.button("Cancel").clicked() {
+                        self.confirm_remove_app = None;
+                    }
+                });
             }
 
             // Inline Unlock / Launch Section

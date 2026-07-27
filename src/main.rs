@@ -8,6 +8,7 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 use config::AppConfig;
 use std::fs;
+use std::io::Write;
 
 #[derive(Parser)]
 #[command(
@@ -56,6 +57,17 @@ enum Commands {
         /// Custom executable binary
         #[arg(short, long)]
         exec: Option<String>,
+    },
+
+    /// Permanently remove an application vault, its encrypted storage, and desktop shortcuts
+    #[command(name = "remove", alias = "delete")]
+    Remove {
+        /// Target application name
+        app_name: String,
+
+        /// Force removal without interactive confirmation
+        #[arg(short, long)]
+        force: bool,
     },
 
     /// Launch an application inside an isolated encrypted workspace via terminal
@@ -111,6 +123,30 @@ fn main() -> Result<()> {
                 "[app-locker] Created desktop launcher with locked icon at: {}",
                 path.display()
             );
+        }
+        Some(Commands::Remove { app_name, force }) => {
+            let vault_path = config.get_vault_path(&app_name);
+            if !vault_path.exists() {
+                println!("[app-locker] Vault for '{}' does not exist.", app_name);
+                return Ok(());
+            }
+
+            if !force {
+                print!(
+                    "[app-locker] WARNING: Permanently delete vault storage for '{}'? (y/N): ",
+                    app_name
+                );
+                std::io::stdout().flush()?;
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+                let trimmed = input.trim().to_lowercase();
+                if trimmed != "y" && trimmed != "yes" {
+                    println!("[app-locker] Aborted removal.");
+                    return Ok(());
+                }
+            }
+
+            vault::remove_vault(&config, &app_name)?;
         }
         Some(Commands::RunGui {
             app_name,

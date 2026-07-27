@@ -4,7 +4,8 @@ use std::io::{IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use crate::config::find_binary;
+use crate::config::{find_binary, AppConfig};
+use crate::shortcut;
 
 /// RAII Guard that manages the lifecycle of an active FUSE mount.
 /// Guarantees that `fusermount -u <mount_path>` is executed and empty mount
@@ -121,6 +122,34 @@ pub fn show_error_zenity(title: &str, message: &str) {
             .arg(message)
             .status();
     }
+}
+
+/// Permanently unmounts and removes an application vault, storage, and desktop shortcuts.
+pub fn remove_vault(config: &AppConfig, app_name: &str) -> Result<()> {
+    let mount_path = config.get_mount_path(app_name);
+    if mount_path.exists() {
+        let mut guard = VaultGuard::new(mount_path.clone());
+        let _ = guard.unmount();
+    }
+
+    let vault_path = config.get_vault_path(app_name);
+    if vault_path.exists() {
+        fs::remove_dir_all(&vault_path).with_context(|| {
+            format!("Failed to delete vault storage at {}", vault_path.display())
+        })?;
+    }
+
+    if mount_path.exists() {
+        let _ = fs::remove_dir_all(&mount_path);
+    }
+
+    shortcut::remove_desktop_shortcut(app_name)?;
+
+    println!(
+        "[app-locker] Removed vault and desktop shortcuts for '{}'.",
+        app_name
+    );
+    Ok(())
 }
 
 /// Initializes an encrypted gocryptfs vault with an explicit passphrase.

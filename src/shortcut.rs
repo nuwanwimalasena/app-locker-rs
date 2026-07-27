@@ -52,3 +52,21 @@ pub fn create_desktop_shortcut(app_name: &str, exec: Option<&str>) -> Result<Pat
 
     Ok(target_path)
 }
+
+pub fn remove_desktop_shortcut(app_name: &str) -> Result<()> {
+    if let Some(home_dir) = dirs::home_dir() {
+        let desktop_file_name = format!("app-locker-{}.desktop", app_name);
+        let app_path = home_dir
+            .join(".local/share/applications")
+            .join(&desktop_file_name);
+        if app_path.exists() {
+            let _ = fs::remove_file(app_path);
+        }
+
+        let desktop_copy = home_dir.join("Desktop").join(&desktop_file_name);
+        if desktop_copy.exists() {
+            let _ = fs::remove_file(desktop_copy);
+        }
+    }
+    Ok(())
+}
